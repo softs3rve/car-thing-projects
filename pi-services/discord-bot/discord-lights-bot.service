@@ -1,0 +1,16 @@
+[Unit]
+Description=Discord bot for smart home light control
+After=network-online.target wiz-bridge.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/smart-home/discord-bot
+ExecStart=/home/admin/smart-home/discord-bot/venv/bin/python /home/admin/smart-home/discord-bot/lights_bot.py
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

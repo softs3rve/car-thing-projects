@@ -1,0 +1,6 @@
+[Unit]
+Description=Re-close the Car Thing's unauthenticated kiosk-cdp-proxy (9222) if it's back after a reboot
+
+[Service]
+Type=oneshot
+ExecStart=/home/admin/smart-home/close_cdp_proxy.sh

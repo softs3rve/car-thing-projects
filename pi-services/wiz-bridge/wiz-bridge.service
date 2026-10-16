@@ -1,0 +1,15 @@
+[Unit]
+Description=Wiz bulb HTTP bridge for Car Thing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/smart-home
+ExecStart=/home/admin/smart-home/venv/bin/python3 /home/admin/smart-home/wiz_bridge.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

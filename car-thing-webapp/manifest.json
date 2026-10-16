@@ -1,0 +1,11 @@
+{
+  "id": "62a82a06-6cfe-42f5-9414-7d7783261227",
+  "name": "Car Thing",
+  "version": "0.1.0",
+  "description": "Clock, Light, Kasa, and Parking in one persistent page (buttons 1-4 switch views instantly instead of navigating).",
+  "icon": "icon.svg",
+  "config": [],
+  "permissions": [
+    "net.fetch"
+  ]
+}

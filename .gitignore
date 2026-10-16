@@ -1,0 +1,28 @@
+# Secrets and per-deployment config
+.bridge_secret
+.discord_bot_token
+.dev.vars
+*.env
+.env.*
+
+# Downloaded by car-thing-webapp/fetch-vendor.sh
+car-thing-webapp/vendor/
+car-thing-webapp/fonts/
+
+# Build and dependency output
+node_modules/
+.wrangler/
+dist/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Device backups never belong in git
+*.dump
+*.ext2
+*backup*/
+
+# OS clutter
+.DS_Store
+._*

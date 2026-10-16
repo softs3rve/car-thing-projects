@@ -1,0 +1,9 @@
+[Unit]
+Description=Periodically check the Car Thing's kiosk-cdp-proxy hasn't come back after a reboot
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

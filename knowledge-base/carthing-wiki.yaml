@@ -1,0 +1,233 @@
+# Spotify Car Thing ("superbird") — machine-readable reference
+# Sources: Thing Labs (carthing.wiki, ThingLabsOSS repos), iFixit, err4o4 RE,
+# DeskThing, claudiuscoenen.de. Community-reverse-engineered; verify before flashing.
+# Last updated: 2026-09-29
+
+device:
+  product_name: Spotify Car Thing
+  codename: superbird
+  device_tree: meson-g12a-superbird
+  status: discontinued (Spotify remotely deactivated units in Dec 2024); now revived by community
+  legality: legal to modify hardware you own; framed as e-waste rescue
+
+hardware:
+  soc: Amlogic S905D2 (G12A family)
+  soc_usb_identity_burn_mode: "1b8e:c003 Amlogic, Inc. (GX-CHIP)"
+  ram: 512 MB DDR (per community RE)
+  storage: 4 GB eMMC at /dev/mmcblk2
+  display: 3.4" LCD touchscreen, 800x480
+  inputs:
+    - 4 physical preset buttons (labeled 1-4, left to right)
+    - rotary dial/knob (rotate + press)
+    - back button
+  connectivity:
+    - USB-C (data + power; the only I/O path for flashing and ADB)
+    - onboard radios present but locked/unused; no usable Wi-Fi/BT for networking
+  networking_note: no usable onboard networking; internet requires a USB-tethered host or an add-on dongle
+
+boot_modes:
+  usb_burn_mode:
+    what: Amlogic ROM-level USB download/flash mode (mass storage of partitions over USB)
+    enter: hold preset buttons 1 AND 4 while plugging in USB-C
+    success_signal: screen stays black; device enumerates as 1b8e:c003 (GX-CHIP)
+    unbrickable: true  # ROM-level; almost always recoverable this way
+    optional_button_trigger: after superbird-tool --enable_burn_mode_button, hold button 4 during boot
+  adb_kernel:
+    what: temporary kernel that exposes ADB + USB gadget without permanent flash
+    enter: superbird-tool --boot_adb_kernel A|B
+
+partitions:
+  scheme: Amlogic AVB2 A/B (slotted)
+  bootloader_size: 4 MB
+  names:
+    - bootloader
+    - fip_a
+    - fip_b
+    - env
+    - logo
+    - recovery
+    - misc
+    - boot_a
+    - boot_b
+    - system_a
+    - system_b
+    - cache
+    - settings
+    - data
+  rootfs: ext4 (Buildroot userland)
+
+flashing_methods:
+  terbium:
+    url: https://terbium.app
+    kind: browser WebUSB flasher (reimplements Amlogic USB Boot protocol)
+    browsers: Chrome / Chromium / Edge (needs WebUSB + File System Access API)
+    audience: recommended for most users (easiest)
+    firmware_source: https://thingify.tools  (download x.x.x-thinglabs.zip, extract first)
+    drivers:
+      windows: 'PowerShell (admin): irm https://driver.terbium.app/get | iex'
+      linux: 'curl -fsSL https://terbium.app/install-rules | bash   # udev rules'
+      macos: none required
+    steps:
+      - download + extract firmware zip from thingify.tools
+      - open terbium.app in a supported browser
+      - enter USB burn mode (buttons 1+4 while plugging in)
+      - select the "GX-CHIP" device when the browser prompts
+      - after it reconnects, select the "Amlogic, Inc." device again
+      - click "Restore Local Folder", pick the extracted firmware folder
+      - grant file access, click "Select" to flash
+    debug: press F12 for logs; ask on Thing Labs Discord
+  superbird_tool:
+    repo: https://github.com/ThingLabsOSS/superbird-tool
+    kind: Python CLI over pyamlboot (cross-platform)
+    audience: backups, restores, env edits, advanced/scripted use
+    install:
+      - python3 -m venv .venv && source .venv/bin/activate
+      - pip install git+https://github.com/superna9999/pyamlboot
+    prereqs:
+      macos: brew install libusb (Apple Silicon may need pyusb from master)
+      linux: add udev rules to run without root
+      windows: Zadig -> WinUSB/libusb for the GX-CHIP device (README calls Windows "really difficult")
+    timings:
+      dump_all: ~110 minutes (much slower than Amlogic's stock tool)
+      restore_all: ~11 minutes (~4 min excluding data/settings)
+    reliability_flags: [--slow_burn, --slower_burn]
+
+superbird_tool_commands:
+  discovery:
+    "--find_device": detect device + current mode
+  backup_restore:
+    "--dump_device OUT_DIR": dump all partitions (SLOW; do this before flashing)
+    "--dump_partition NAME FILE": dump one partition
+    "--restore_device IN_DIR": flash all partitions
+    "--restore_partition NAME FILE": flash one partition
+  boot:
+    "--boot_adb_kernel A|B": temporary ADB/USB-gadget kernel
+    "--enable_burn_mode": force USB burn mode on every boot
+    "--enable_burn_mode_button": burn mode by holding button 4 at boot
+    "--disable_avb2 A|B": lock to a single boot slot
+    "--disable_charger_check": skip charger validation
+  env:
+    "--get_env FILE": read u-boot environment
+    "--send_env FILE": write u-boot environment
+    "--restore_stock_env": reset env to factory
+
+custom_os:
+  deskthing:
+    url: https://deskthing.app
+    repo: https://github.com/ItsRiprod/DeskThing
+    model: desktop server (Node.js 25+) + on-device Chromium client, linked over ADB/IPC
+    install_server: download installer from deskthing.app/releases (do NOT clone main)
+    device_setup: Clients tab -> refresh ADB -> Settings -> enable Auto Detect ADB, Use Global ADB, Auto Config
+    apps: Spotify playback/album art, local media, Discord, weather, community apps
+  nocturne:
+    url: https://usenocturne.com
+    repo: https://github.com/usenocturne/nocturne
+  llizardos:
+    url: https://llizard.com
+
+internet_access:
+  reason: device has no usable onboard networking (BT only; no usable Wi-Fi)
+  decision:
+    - if the goal is DeskThing apps -> often NO device internet needed (server tethers data over ADB); simplest
+    - if you want real system-wide internet while tethered -> g_ether USB Ethernet + host NAT (best)
+    - if you want standalone / in-car with no host -> ESP32-S3 USB-NCM Wi-Fi dongle
+    - legacy / app-only fallback -> SOCKS proxy + adb reverse (Chromium only)
+  method_deskthing_over_adb:
+    what: DeskThing desktop server has internet; device apps receive data over the ADB/USB IPC link
+    device_internet_required: false
+    note: most efficient path when DeskThing's app catalog covers the need
+  method_usb_ethernet_gether:  # RECOMMENDED for real internet
+    what: custom-kernel USB gadget exposes a g_ether Ethernet interface; host NATs its uplink
+    device_ip: 172.16.42.2/24 (usb0)
+    host_ip: 172.16.42.1/24
+    gadget_usb_id: "0525:a4a2 (Linux g_ether)"
+    ssh: "ssh root@172.16.42.2   # password: buildroot"
+    host_os: Linux / Raspberry Pi (macOS CDC-ethernet gadget support is poor — use a Pi)
+    host_setup:
+      - 'echo ''SUBSYSTEM=="net", ATTRS{idVendor}=="0525", ATTRS{idProduct}=="a4a2", NAME="usb_ether"'' | sudo tee /etc/udev/rules.d/99-usb-ether.rules'
+      - sudo udevadm control --reload-rules && sudo udevadm trigger
+      - sudo ip addr add 172.16.42.1/24 dev usb_ether
+      - sudo ip link set usb_ether up
+      - sudo sysctl -w net.ipv4.ip_forward=1
+      - sudo iptables -t nat -A POSTROUTING -s 172.16.42.0/24 -j MASQUERADE
+      - sudo iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      - sudo iptables -A FORWARD -s 172.16.42.0/24 -j ACCEPT
+    device_setup:  # via adb shell or ssh root@172.16.42.2
+      - ip addr add 172.16.42.2/24 dev usb0   # if firmware did not already
+      - ip link set usb0 up
+      - ip route add default via 172.16.42.1
+      - "echo 'nameserver 1.1.1.1' > /etc/resolv.conf   # DNS (the blog omits this)"
+    source: err4o4/spotify-car-thing-reverse-engineering
+  method_esp32_dongle:  # standalone, no host
+    what: ESP32-S3 acts as a USB-NCM network adapter bridging Wi-Fi to the Car Thing's USB
+    firmware_dir: esp32-wifi-ncm (in err4o4 RE repo)
+    requires: Car Thing acting as USB host (OTG) for the dongle
+    best_for: in-car / always-on standalone builds (no PC or Pi needed)
+    source: err4o4/spotify-car-thing-reverse-engineering
+  method_socks_proxy:  # legacy, Chromium-only
+    host: Linux box / Raspberry Pi
+    proxy: Dante SOCKS proxy on port 1080 (routes out via wlan0)
+    bridge: adb reverse tcp:1080 tcp:1080
+    device_browser_flag: '--proxy-server="socks5://127.0.0.1:1080"'
+    limitation: only proxies apps configured to use it (e.g. Chromium flag); not system-wide
+    extras:
+      - 'adb shell date -s "`date +%Y-%m-%d %H:%M`"   # set clock'
+      - 'adb shell mount -o remount,rw /              # writable rootfs'
+      - edit /etc/supervisord.conf chrome line to add the proxy flag (+ --app=http://localhost:8000)
+    source: https://claudiuscoenen.de/spotify-carthing-internet-access
+
+adb:
+  availability: exposed by custom firmwares / --boot_adb_kernel over USB
+  common:
+    - adb devices
+    - adb shell
+    - adb push LOCAL REMOTE / adb pull REMOTE LOCAL
+    - adb reverse tcp:PORT tcp:PORT
+    - adb shell mount -o remount,rw /
+
+recovery:
+  principle: Amlogic ROM burn mode (buttons 1+4) is un-brickable at the SoC level
+  paths:
+    - re-enter burn mode and reflash a known-good firmware with Terbium
+    - superbird-tool --restore_device from your own pre-flash dump
+    - superbird-tool --restore_stock_env to fix a bad u-boot environment
+
+pitfalls:
+  - USB cable/port quality strongly affects success; try C-to-C and different ports/hubs
+  - AMD 5000-series USB controllers reported to fail; use another machine/hub
+  - use --slow_burn / --slower_burn on timeout errors; power-cycle after a timeout
+  - Windows flashing is finicky (drivers); prefer Terbium, or Linux/macOS for superbird-tool
+  - dumping is very slow (~110 min) but a full backup is worth it before first flash
+  - "kiosk webapps: avoid a looping background <video>. Measured 2026-09-29 on bridgething: decoder thread vdec_recycle stays in D state (load ~2.5 at 93% idle CPU), free RAM ~14MB of 447MB with ~122MB swapped; without it load ~0.9, available RAM 71MB -> 121MB, swap 73MB"
+
+glossary:
+  superbird: Amlogic codename for the Car Thing
+  burn_mode: Amlogic USB ROM download/flash mode used for imaging
+  GX-CHIP: the device's USB identity while in burn mode
+  FIP: Firmware Image Package (ARM Trusted Firmware bootloader bundle); see superbird-fip-tools
+  u-boot: the bootloader; see superbird-uboot (mainline port)
+  AVB2: Android Verified Boot 2.0 (A/B slotted verified boot)
+  buildroot: the embedded Linux userland on the device
+  ADB: Android Debug Bridge (USB debugging/shell)
+  pyamlboot: open Python implementation of Amlogic's USB boot protocol
+
+repositories:
+  thing_labs_org: https://github.com/ThingLabsOSS
+  superbird_tool: https://github.com/ThingLabsOSS/superbird-tool
+  superbird_webapp: https://github.com/ThingLabsOSS/superbird-webapp
+  superbird_uboot: https://github.com/ThingLabsOSS/superbird-uboot
+  superbird_fip_tools: https://github.com/ThingLabsOSS/superbird-fip-tools
+  wiki_astro: https://github.com/ThingLabsOSS/wiki-astro
+  wiki: https://github.com/ThingLabsOSS/wiki
+  firmware_updates: https://github.com/ThingLabsOSS/firmware-updates
+  peek_carthing: https://github.com/ThingLabsOSS/peek-carthing
+  reverse_engineering: https://github.com/err4o4/spotify-car-thing-reverse-engineering
+  deskthing: https://github.com/ItsRiprod/DeskThing
+
+links:
+  wiki_site: https://carthing.wiki
+  flashing_page: https://carthing.wiki/first-steps/flashing/
+  thingify: https://thingify.tools
+  terbium: https://terbium.app
+  ifixit_guide: https://www.ifixit.com/Guide/How+to+Install+Custom+Firmware+onto+Car+Thing/178814
+  internet_access_blog: https://claudiuscoenen.de/spotify-carthing-internet-access

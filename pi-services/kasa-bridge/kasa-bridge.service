@@ -1,0 +1,16 @@
+[Unit]
+Description=Kasa smart plug HTTP bridge for Car Thing + Discord bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/smart-home
+ExecStart=/home/admin/smart-home/kasa/venv/bin/python3 /home/admin/smart-home/kasa_bridge.py
+Restart=on-failure
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

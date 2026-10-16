@@ -1,0 +1,1637 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=800, height=480, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <title>Car Thing</title>
+    <style>
+      /* Real Helvetica isn't a free/licensable font - this device's Chromium
+         (embedded Linux, not macOS) almost certainly doesn't have it or
+         "Helvetica Neue" installed anyway, so naming them would just silently
+         fall back to whatever generic sans the OS ships with. Arimo is
+         Google's genuinely free, Helvetica/Arial-metric-compatible face;
+         Source Code Pro is Adobe's free monospace (SIL OFL). Both vendored
+         locally as real files so rendering is identical regardless of what
+         fonts exist on the device. */
+      @font-face {
+        font-family: "Arimo";
+        font-weight: 700;
+        font-style: normal;
+        src: url("./fonts/arimo-bold.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Source Code Pro";
+        font-weight: 400;
+        font-style: normal;
+        src: url("./fonts/source-code-pro-regular.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Source Code Pro";
+        font-weight: 700;
+        font-style: normal;
+        src: url("./fonts/source-code-pro-bold.woff2") format("woff2");
+      }
+
+      :root { --pop: #ff0066; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 800px; height: 480px; overflow: hidden; }
+      /* Plain black background (2026-09-29, owner's call: speed over
+         aesthetic). The ambient video it replaces kept the Amlogic hardware
+         decoder running permanently: its kernel thread sat in uninterruptible
+         sleep (the Car Thing's steady ~2.5 load average on an otherwise 93%
+         idle CPU), and its buffers competed for a device with ~14MB of free
+         RAM that was already swapping. The file is still in the webapp dir
+         and _shared/ if it ever comes back. */
+      html, body { background: #000; }
+      body {
+        color: #fff;
+        font-family: "Arimo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        user-select: none; touch-action: manipulation;
+      }
+      .mono { font-family: "Source Code Pro", "SF Mono", monospace; }
+      button { font-family: inherit; cursor: pointer; }
+
+      /* Each view is a full-screen layer; showing/hiding is a plain `hidden`
+         attribute toggle (native `[hidden]{display:none}`) - no navigation,
+         no teardown, so switching between them is instant. */
+      .view { position: fixed; inset: 0; width: 800px; height: 480px; }
+
+      .outline-title {
+        font-weight: 700; text-transform: uppercase; letter-spacing: 0.01em;
+        color: transparent; -webkit-text-stroke: 1.6px #fff;
+        white-space: nowrap;
+      }
+      .outline-title.pop { -webkit-text-stroke-color: var(--pop); }
+
+      /* ══════════════════════════════════════════════════════════════════
+         CLOCK view
+         ══════════════════════════════════════════════════════════════════ */
+      #view-clock { --line: rgba(255, 255, 255, 0.85); --sp: 32px; }
+      #view-clock .outline-title.pop { margin-left: 0.2em; }
+
+      #clock-grid {
+        display: grid;
+        grid-template-columns: 1fr 160px;
+        grid-template-rows: 116px 248px 116px;
+        width: 800px; height: 480px;
+      }
+      #view-clock .cell-b { border-bottom: 1px solid var(--line); }
+      #view-clock .cell-r { border-right: 1px solid var(--line); }
+
+      #clock-header-left {
+        grid-column: 1; grid-row: 1;
+        display: flex; align-items: center; justify-content: space-between;
+        height: 100%; padding: 0 var(--sp);
+      }
+      #clock-header-title .outline-title { font-size: 62px; }
+      #clock-header-date { text-align: right; }
+      #clock-header-date .md-line { font-size: 34px; font-weight: 700; white-space: nowrap; }
+      #clock-header-date .md-line .month { color: var(--pop); }
+      #clock-header-date .md-line .day { color: #fff; margin-left: 0.28em; }
+      #clock-header-date .weekday { font-size: 22px; font-weight: 400; opacity: 0.85; margin-top: 2px; }
+
+      #clock-header-right {
+        grid-column: 2; grid-row: 1;
+        display: flex; align-items: center; justify-content: center; height: 100%;
+      }
+      #clock-year { font-size: 46px; font-weight: 700; color: var(--pop); }
+
+      #clock-ampm-cell {
+        grid-column: 2; grid-row: 2;
+        display: flex; align-items: flex-end; justify-content: center; height: 100%;
+      }
+      #clock-ampm.outline-title { font-size: 90px; }
+
+      #clock-time-left {
+        grid-column: 1; grid-row: 2;
+        display: flex; align-items: center; height: 100%; padding: 0 var(--sp) 0 25px;
+      }
+      #clock-time {
+        display: flex; align-items: center;
+        font-family: "Arimo", "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 232px; font-weight: 700; line-height: 1;
+      }
+      #view-clock .colon-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; margin: 0 10px; align-self: center; }
+      #view-clock .colon-dot { width: 32px; height: 32px; background: #fff; transition: opacity 0.1s linear; }
+      #view-clock .colon-dot.dim { opacity: 0.15; }
+
+      #clock-weather {
+        grid-column: 1 / -1; grid-row: 3;
+        display: flex; align-items: center; height: 100%; padding-left: var(--sp); gap: 22px;
+      }
+      #clock-weather-place { font-size: 30px; font-weight: 700; color: var(--pop); }
+      #view-clock .reading { display: flex; align-items: center; gap: 14px; }
+      #view-clock .reading .label { font-size: 26px; opacity: 0.85; }
+      #view-clock .reading .temp { font-size: 30px; }
+      #view-clock .weather-icon { width: 46px; height: 46px; display: block; }
+      #view-clock .weather-icon svg { width: 100%; height: 100%; }
+
+      #view-clock .sun-rays { transform-origin: 32px 32px; animation: clock-spin 10s linear infinite; }
+      #view-clock .sun-disc { animation: clock-glow 2.4s ease-in-out infinite; transform-origin: 32px 32px; }
+      @keyframes clock-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      @keyframes clock-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.75; } }
+      #view-clock .moon-body { animation: clock-glow 4s ease-in-out infinite; transform-origin: 32px 32px; }
+      #view-clock .moon-star { animation: clock-twinkle 2.2s ease-in-out infinite; transform-origin: center; }
+      #view-clock .moon-star.b { animation-delay: 1.1s; }
+      @keyframes clock-twinkle { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+
+      #clock-moveBadge {
+        display: none;
+        position: absolute;
+        right: var(--sp);
+        bottom: 18px;
+        font-size: 30px;
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+         LIGHT view
+         ══════════════════════════════════════════════════════════════════ */
+      #view-light {
+        --line: rgba(255, 255, 255, 0.35);
+        --line-dim: rgba(255, 255, 255, 0.15);
+        --sp: 16px;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+      #view-light .outline-title { font-size: 44px; font-weight: 800; -webkit-text-stroke: 1.5px #fff; }
+      #view-light .outline-title.pop { margin-left: 0.25em; }
+      #view-light .tile { background: rgba(22, 22, 22, 0.72) !important; }
+      #light-picker { background: rgba(10, 10, 10, 0.94) !important; }
+
+      #light-root { display: flex; flex-direction: column; width: 100%; height: 100%; }
+
+      #light-header {
+        flex-shrink: 0;
+        display: flex; align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      /* Side columns size to their content: the old fixed 380px left column
+         was narrower than the LIGHT CONTROL title itself (~365px of type plus
+         padding), so the title overran into the ALL/ 15% status. */
+      #light-header-left { flex: none; padding-left: calc(var(--sp) * 1.25); }
+      #light-header-center { flex: 1; min-width: 0; display: flex; justify-content: center; }
+      #light-header-right {
+        flex: none; display: flex; justify-content: flex-end;
+        padding-right: calc(var(--sp) * 1.25);
+      }
+      #light-scanBtn {
+        font-family: "Source Code Pro", "SF Mono", monospace;
+        font-size: 13px; letter-spacing: 0.08em; color: rgba(255,255,255,0.55);
+        background: transparent; border: 1px solid var(--line);
+        padding: 6px 14px; cursor: pointer;
+      }
+      #light-scanBtn:active { background: rgba(255,255,255,0.1); }
+      #light-status-big { display: flex; align-items: baseline; gap: 10px; }
+      #light-status-target { font-size: 28px; font-weight: 800; color: var(--pop); }
+      #light-status-pct { font-size: 28px; font-weight: 800; }
+      #light-diag { position: absolute; left: var(--sp); bottom: 4px; font-size: 10px; color: rgba(255,255,255,0.35); }
+      #light-error { color: var(--pop); }
+
+      #light-main { flex: 1; display: flex; }
+      #light-grid {
+        width: 380px; padding: var(--sp);
+        display: grid; grid-template-columns: repeat(2, 1fr); grid-auto-rows: 1fr;
+        gap: var(--sp);
+      }
+      #view-light .tile {
+        border: 1px solid var(--line-dim); background: #161616;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 8px; padding: 10px 0;
+      }
+      #view-light .tile.selected { border: 2px solid var(--pop); }
+      #view-light .tile .swatch-fill { width: 36px; height: 36px; background: #333; }
+      #view-light .tile .mini-bar-track { width: 68px; height: 6px; background: rgba(255,255,255,0.08); }
+      #view-light .tile .mini-bar-fill { height: 100%; background: rgba(255,255,255,0.7); }
+      #view-light .tile.offline .tile-label { color: var(--pop); }
+      #view-light .tile.offline .swatch-fill { background: transparent !important; border: 1px dashed rgba(255,255,255,0.25); }
+      #view-light .tile .tile-label { font-size: 12px; letter-spacing: 0.06em; }
+
+      #light-center { flex: 1; display: flex; align-items: center; justify-content: center; }
+      #light-bulb {
+        width: 216px; height: 216px; border-radius: 50%;
+        border: 2px solid #fff;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 86px; cursor: pointer;
+        background: transparent;
+        box-shadow: 0 0 0 rgba(255,255,255,0);
+        transition: background-color 0.15s, box-shadow 0.15s;
+      }
+
+      #light-slider-row {
+        position: relative; width: 100%; height: 60px; flex-shrink: 0;
+        display: flex; align-items: center;
+      }
+      #view-light input[type="range"] {
+        -webkit-appearance: none; appearance: none;
+        width: 100%; height: 3px; background: var(--line); outline: none; margin: 0;
+      }
+      #view-light input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 36px; height: 36px; border-radius: 0;
+        background: var(--pop); cursor: pointer; border: none;
+        margin-top: -16.5px;
+      }
+
+      #light-colors-row { flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: var(--sp); padding: 10px var(--sp); }
+      #view-light .swatch { width: 60px; height: 60px; border: 1px solid var(--line-dim); cursor: pointer; }
+      #view-light .swatch.current { border: 2px solid #fff; }
+      #view-light .plus-trigger {
+        width: 60px; height: 60px;
+        display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+        gap: 3px; cursor: pointer;
+      }
+      #view-light .plus-trigger .cell { background: transparent; }
+      #view-light .plus-trigger .cell.arm { background: #fff; }
+      #view-light .plus-trigger .cell.center { background: #000; }
+
+      #light-picker {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: #0a0a0a;
+        display: none; flex-direction: column; align-items: flex-start; justify-content: center;
+        gap: 28px; z-index: 20;
+        padding-left: 280px;
+      }
+      #light-picker.open { display: flex; }
+
+      #light-picker-top { width: 490px; display: flex; align-items: center; gap: 20px; }
+      #light-picker-preview { width: 320px; flex: none; height: 56px; border: 1px solid var(--line-dim); }
+      #light-hex-readout { font-size: 26px; letter-spacing: 0.06em; }
+
+      #light-picker-body { display: flex; }
+      #light-spectrum { width: 320px; height: 220px; position: relative; cursor: pointer; }
+      #light-spectrum .hue-layer {
+        position: absolute; inset: 0;
+        background: linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red);
+      }
+      #light-spectrum .shade-layer {
+        position: absolute; inset: 0; pointer-events: none;
+        background: linear-gradient(to bottom, #fff, rgba(255,255,255,0) 50%, rgba(0,0,0,0) 50%, #000);
+      }
+
+      /* on the left - the physical dial sits over the right-hand portion of
+         the screen, and vertical sliders positioned there collided with it */
+      #light-rgb-verticals {
+        position: absolute; top: 30px; bottom: 30px; left: 40px;
+        display: flex; gap: 56px;
+      }
+      #view-light .v-slider-col { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+      #view-light .v-slider-col label { font-size: 15px; opacity: 0.7; }
+      #view-light .v-slider-wrap { position: relative; width: 26px; height: 385px; }
+      #view-light input.v-slider {
+        -webkit-appearance: none; appearance: none;
+        position: absolute; top: 50%; left: 50%;
+        width: 385px; height: 3px; background: var(--line); outline: none; margin: 0;
+        transform: translate(-50%, -50%) rotate(-90deg);
+      }
+      #view-light input.v-slider::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 26px; height: 26px; border-radius: 0;
+        background: var(--pop); cursor: pointer; border: none;
+        margin-top: -1.5px; /* empirically solved - rotated-thumb centering doesn't follow the pre-rotation formula 1:1 */
+      }
+
+      #light-picker-bottom { width: 490px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+      #light-picker-hint { font-size: 12px; opacity: 0.5; }
+      #light-picker-swatches { display: flex; gap: 14px; justify-content: flex-start; }
+      #view-light .picker-swatch { width: 52px; height: 52px; border: 1px solid var(--line-dim); cursor: pointer; }
+
+      /* ══════════════════════════════════════════════════════════════════
+         KASA view
+         ══════════════════════════════════════════════════════════════════ */
+      #view-kasa { --line: rgba(255, 255, 255, 0.85); --on: #3ddc61; color: #e8e8e8; }
+      #view-kasa .outline-title + .outline-title { margin-left: 0.28em; }
+
+      #kasa-header {
+        height: 92px;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 28px;
+        border-bottom: 1px solid var(--line);
+      }
+      #kasa-header .outline-title { font-size: 44px; }
+      #kasa-summary { font-size: 14px; color: #9a9a9a; text-align: right; line-height: 1.5; }
+
+      #kasa-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap: 14px;
+        padding: 16px 28px;
+        height: 388px;
+      }
+      #view-kasa .tile {
+        border: 1px solid rgba(255,255,255,0.28);
+        background: rgba(12,12,12,0.55);
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto 1fr auto;
+        padding: 12px 14px;
+        cursor: pointer;
+      }
+      #view-kasa .tile.on { border-color: var(--on); }
+      #view-kasa .tile.unreachable { opacity: 0.45; }
+      #view-kasa .tile .name {
+        grid-column: 1; grid-row: 1;
+        font-size: 13px; letter-spacing: 0.06em; color: #cfcfcf;
+        text-transform: uppercase; font-weight: 700;
+      }
+      #view-kasa .tile .rssi { grid-column: 2; grid-row: 1; font-size: 11px; color: #7a7a7a; }
+      #view-kasa .tile .state {
+        grid-column: 1 / -1; grid-row: 2;
+        display: flex; align-items: center;
+        font-size: 46px; font-weight: 700; letter-spacing: 0.02em;
+      }
+      #view-kasa .tile .state.is-on { color: var(--on); }
+      #view-kasa .tile .state.is-off { color: #5a5a5a; }
+      #view-kasa .tile .sched {
+        grid-column: 1 / -1; grid-row: 3;
+        font-size: 13px; color: #8f8f8f;
+        display: flex; align-items: center; justify-content: space-between;
+        border-top: 1px solid rgba(255,255,255,0.12);
+        padding-top: 7px;
+      }
+      #view-kasa .tile .sched .edit { color: var(--pop); font-weight: 700; }
+
+      #kasa-editor {
+        position: absolute; inset: 0;
+        z-index: 20;
+        display: none;
+        flex-direction: column; align-items: center; justify-content: center;
+        background: rgba(6,6,6,0.93);
+        gap: 18px;
+      }
+      #kasa-editor.open { display: flex; }
+      #kasa-edTitle { font-size: 15px; letter-spacing: 0.08em; color: #b9b9b9; text-transform: uppercase; }
+      #kasa-edFields { display: flex; align-items: center; gap: 40px; }
+      #view-kasa .edField { text-align: center; padding: 10px 22px; border: 1px solid transparent; }
+      #view-kasa .edField.sel { border-color: var(--pop); }
+      #view-kasa .edField .lab { font-size: 12px; letter-spacing: 0.1em; color: #8f8f8f; margin-bottom: 4px; }
+      #view-kasa .edField .val { font-size: 52px; font-weight: 700; color: #fff; }
+      #kasa-edHint { font-size: 12px; color: #7a7a7a; letter-spacing: 0.04em; }
+      #kasa-edButtons { display: flex; gap: 14px; margin-top: 4px; }
+      #view-kasa .edBtn {
+        padding: 11px 26px; border: 1px solid var(--line);
+        background: transparent; color: #e8e8e8;
+        font-size: 14px; letter-spacing: 0.06em; font-weight: 700;
+        cursor: pointer; text-transform: uppercase;
+      }
+      #view-kasa .edBtn.primary { border-color: var(--on); color: var(--on); }
+      #view-kasa .edBtn.danger { border-color: var(--pop); color: var(--pop); }
+
+      #kasa-error {
+        position: absolute; bottom: 6px; right: 10px;
+        font-size: 11px; color: var(--pop); z-index: 30;
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+         PARKING view
+         ══════════════════════════════════════════════════════════════════ */
+      #view-parking { --line: rgba(255, 255, 255, 0.85); --safe: #3ddc61; color: #e8e8e8; }
+      #view-parking .outline-title.safe { -webkit-text-stroke-color: var(--safe); }
+      #view-parking .outline-title + .outline-title { margin-left: 0.28em; }
+
+      #parking-map {
+        position: absolute; inset: 0;
+        width: 800px; height: 480px;
+        object-fit: contain;
+        display: none;
+      }
+      #parking-empty {
+        position: absolute; inset: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 12px; text-align: center;
+      }
+      #view-parking .headline { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+      #view-parking .sub { font-size: 15px; color: #888; }
+
+      #parking-header {
+        position: absolute; top: 0; left: 0; right: 0;
+        z-index: 2;
+        height: 108px;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 28px;
+        background: rgba(10, 10, 10, 0.72);
+        border-bottom: 1px solid var(--line);
+        display: none;
+      }
+      #parking-header .outline-title { font-size: 46px; }
+      #parking-header #parking-updated { font-size: 12px; color: #666; }
+
+      #parking-schedule {
+        position: absolute; bottom: 0; left: 0;
+        z-index: 2;
+        padding: 0 0 28px 28px;
+        display: none;
+      }
+      #parking-schedule .label {
+        font-size: 15px; letter-spacing: 0.04em; color: #fff;
+        font-weight: 700; margin-bottom: 6px;
+      }
+      #parking-schedule .window {
+        font-size: 18px; color: #fff; line-height: 1.5;
+      }
+
+      #parking-badge {
+        position: absolute; bottom: 22px; right: 28px;
+        z-index: 2;
+        display: none;
+      }
+      #parking-badge .outline-title { font-size: 64px; }
+
+      #parking-moveModal {
+        position: absolute; inset: 0;
+        z-index: 10;
+        display: none;
+        flex-direction: column; align-items: center; justify-content: center;
+        gap: 16px;
+        text-align: center;
+        animation: parking-moveFlash 1s infinite;
+      }
+      @keyframes parking-moveFlash {
+        0%, 49.9% { background: rgba(10,10,10,0.4); }
+        50%, 100% { background: rgba(255,0,102,0.8); }
+      }
+      #parking-moveModal .headline { font-size: 88px; }
+      #parking-moveModal .street {
+        font-size: 24px; color: #fff;
+        text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+      }
+      #parking-moveModal .hint {
+        position: absolute; bottom: 20px;
+        font-size: 13px; color: rgba(255,255,255,0.9);
+        letter-spacing: 1px;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ════════════════════════════════════════════════════════════════
+         CLOCK view
+         ════════════════════════════════════════════════════════════════ -->
+    <section id="view-clock" class="view">
+      <div id="clock-grid">
+        <div id="clock-header-left" class="cell-b cell-r">
+          <div id="clock-header-title">
+            <span class="outline-title">TIME</span><span class="outline-title pop">DATE</span>
+          </div>
+          <div id="clock-header-date">
+            <div class="md-line"><span class="month" id="clock-month"></span><span class="day" id="clock-day"></span></div>
+            <div class="weekday mono" id="clock-weekday"></div>
+          </div>
+        </div>
+        <div id="clock-header-right" class="cell-b">
+          <span id="clock-year"></span>
+        </div>
+        <div id="clock-ampm-cell" class="cell-b">
+          <span id="clock-ampm" class="outline-title pop"></span>
+        </div>
+
+        <div id="clock-time-left" class="cell-b cell-r">
+          <div id="clock-time"></div>
+        </div>
+
+        <div id="clock-weather">
+          <span id="clock-weather-place" class="mono">your-city</span>
+          <div class="reading">
+            <span class="label mono">now</span>
+            <span class="temp mono" id="clock-temp-now"></span>
+            <span class="weather-icon" id="clock-icon-now"></span>
+          </div>
+          <div class="reading">
+            <span class="label mono">later</span>
+            <span class="temp mono" id="clock-temp-later"></span>
+            <span class="weather-icon" id="clock-icon-later"></span>
+          </div>
+        </div>
+      </div>
+
+      <span id="clock-moveBadge" class="outline-title pop">MOVE</span>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         LIGHT view
+         ════════════════════════════════════════════════════════════════ -->
+    <section id="view-light" class="view" hidden>
+      <div id="light-root">
+        <div id="light-header">
+          <div id="light-header-left">
+            <span class="outline-title">LIGHT</span><span class="outline-title pop">CONTROL</span>
+          </div>
+          <div id="light-header-center">
+            <div id="light-status-big" class="mono">
+              <span id="light-status-target"></span><span id="light-status-pct"></span>
+            </div>
+          </div>
+          <div id="light-header-right">
+            <button id="light-scanBtn" class="mono">SCAN</button>
+          </div>
+        </div>
+
+        <div id="light-main">
+          <div id="light-grid"></div>
+          <div id="light-center">
+            <div id="light-bulb">💡</div>
+          </div>
+        </div>
+
+        <div id="light-slider-row">
+          <input id="light-brightness" type="range" min="0" max="100" value="0" />
+        </div>
+
+        <div id="light-colors-row"></div>
+
+        <div id="light-diag" class="mono"><span id="light-error"></span><span id="light-debug"></span></div>
+      </div>
+
+      <div id="light-picker">
+        <div id="light-picker-top">
+          <div id="light-picker-preview"></div>
+          <div id="light-hex-readout" class="mono">#FFFFFF</div>
+        </div>
+        <div id="light-picker-body">
+          <div id="light-spectrum">
+            <div class="hue-layer"></div>
+            <div class="shade-layer"></div>
+          </div>
+        </div>
+        <div id="light-rgb-verticals">
+          <div class="v-slider-col"><div class="v-slider-wrap"><input id="light-rSlider" class="v-slider" type="range" min="0" max="255" value="255" /></div><label class="mono">R</label></div>
+          <div class="v-slider-col"><div class="v-slider-wrap"><input id="light-gSlider" class="v-slider" type="range" min="0" max="255" value="255" /></div><label class="mono">G</label></div>
+          <div class="v-slider-col"><div class="v-slider-wrap"><input id="light-bSlider" class="v-slider" type="range" min="0" max="255" value="255" /></div><label class="mono">B</label></div>
+        </div>
+        <div id="light-picker-bottom">
+          <div id="light-picker-hint" class="mono">tap a swatch to save the current color there</div>
+          <div id="light-picker-swatches"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         KASA view
+         ════════════════════════════════════════════════════════════════ -->
+    <section id="view-kasa" class="view" hidden>
+      <div id="kasa-header">
+        <div>
+          <span class="outline-title">KASA</span><span class="outline-title pop">PLUGS</span>
+        </div>
+        <div id="kasa-summary" class="mono"></div>
+      </div>
+
+      <div id="kasa-grid"></div>
+
+      <div id="kasa-editor">
+        <div id="kasa-edTitle" class="mono"></div>
+        <div id="kasa-edFields">
+          <div class="edField sel" id="kasa-edOn">
+            <div class="lab mono">ON AT</div>
+            <div class="val mono" id="kasa-edOnVal">07:00</div>
+          </div>
+          <div class="edField" id="kasa-edOff">
+            <div class="lab mono">OFF AT</div>
+            <div class="val mono" id="kasa-edOffVal">23:00</div>
+          </div>
+        </div>
+        <div id="kasa-edHint" class="mono">turn dial to adjust · tap a field to switch · 15 min steps</div>
+        <div id="kasa-edButtons">
+          <button class="edBtn primary" id="kasa-edSave">Save</button>
+          <button class="edBtn danger" id="kasa-edClear">Clear</button>
+          <button class="edBtn" id="kasa-edCancel">Cancel</button>
+        </div>
+      </div>
+
+      <div id="kasa-error" class="mono"></div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         PARKING view
+         ════════════════════════════════════════════════════════════════ -->
+    <section id="view-parking" class="view" hidden>
+      <div id="parking-empty">
+        <div class="headline">NO PARKING REPORT YET</div>
+        <div class="sub">Waiting for the Shortcuts automation to report a spot.</div>
+      </div>
+      <img id="parking-map" alt="" />
+
+      <div id="parking-header">
+        <div id="parking-headerTitle">
+          <span class="outline-title">TICKET</span><span class="outline-title pop">PREVENTER</span><span class="outline-title">3000</span>
+        </div>
+        <div id="parking-updated" class="mono"></div>
+      </div>
+
+      <div id="parking-schedule">
+        <div class="label mono">STREET CLEANING</div>
+        <div id="parking-scheduleLines" class="mono"></div>
+      </div>
+
+      <div id="parking-badge">
+        <span id="parking-badgeText" class="outline-title safe">SAFE</span>
+      </div>
+
+      <div id="parking-moveModal">
+        <div class="headline outline-title pop">MOVE DA CAR</div>
+        <div class="street" id="parking-moveStreet"></div>
+        <div class="hint mono">button A dismisses</div>
+      </div>
+    </section>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "@bridgething/client": "./vendor/bridgething-client/dist/index.js",
+          "@bridgething/lib": "./vendor/bridgething-lib/dist/index.js",
+          "@bridgething/lib/uuid": "./vendor/bridgething-lib/dist/uuid.js",
+          "@bridgething/lib/client": "./vendor/bridgething-lib/dist/bindings/client.js",
+          "@msgpack/msgpack": "./vendor/msgpack/dist.esm/index.mjs",
+          "pako": "./vendor/pako.esm.min.mjs",
+          "uuid": "./vendor/uuid-shim.js"
+        }
+      }
+    </script>
+    <script type="module">
+      import { BridgethingClient } from "@bridgething/client";
+
+      // One bridgething webapp registration holds all four views. Kept only
+      // because BridgethingClient's constructor expects the page to be one.
+      const bridgeClient = new BridgethingClient();
+
+      const BRIDGE = "http://10.42.1.253:8899";   // wiz_bridge: lights
+      const KASA_BRIDGE = "http://10.42.1.253:8912"; // kasa_bridge: plugs
+      const BRIDGE_SECRET = "REPLACE_WITH_YOUR_BRIDGE_SECRET";
+      const BRIDGE_AUTH_HEADERS = { "X-Bridge-Secret": BRIDGE_SECRET };
+      const AUTH_JSON = { ...BRIDGE_AUTH_HEADERS, "Content-Type": "application/json" };
+
+      // ────────────────────────────────────────────────────────────────
+      // View switching - replaces every app's old bridgeClient.webapp
+      // .activate({id}) full-page navigation with a plain show/hide. No
+      // network round trip, no page teardown, no video re-init - this is
+      // the whole point of the merge (switching used to take ~5s).
+      // ────────────────────────────────────────────────────────────────
+      const VIEWS = ["clock", "light", "kasa", "parking"];
+      let currentView = "clock";
+      let lastNonClockView = null;
+      const viewShowHandlers = {};
+      const viewHideHandlers = {};
+
+      function showView(name) {
+        if (!VIEWS.includes(name) || name === currentView) return;
+        const leaving = currentView;
+        if (leaving !== "clock") lastNonClockView = leaving;
+        viewHideHandlers[leaving] && viewHideHandlers[leaving]();
+        document.getElementById("view-" + leaving).hidden = true;
+        document.getElementById("view-" + name).hidden = false;
+        currentView = name;
+        viewShowHandlers[name] && viewShowHandlers[name]();
+      }
+
+      // Mirrors the old cross-page "any key on Clock returns to whichever
+      // app was active before" gesture. Used to require a round trip through
+      // wiz_bridge.py's /state/last-active-app because 4 separate pages had
+      // no other way to share state - now it's just a local variable.
+      function dismissToLastApp() {
+        if (lastNonClockView) showView(lastNonClockView);
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      // Shared "move the car" safety poll - replaces the 4 duplicated
+      // pollParkingAlert()/pollParkingBadge() force-navigate copies with
+      // one. Runs unconditionally regardless of which view is showing,
+      // since its whole job is to guarantee Parking's flashing takeover is
+      // seen no matter what's on screen.
+      // ────────────────────────────────────────────────────────────────
+      const PARKING_WORKER_BASE = "https://REPLACE_WITH_YOUR_WORKER.YOUR_SUBDOMAIN.workers.dev";
+      const PARKING_KEY = "REPLACE_WITH_YOUR_PARKING_SHARED_SECRET";
+      const PARKING_SAFETY_POLL_MS = 600000; // 10 minutes
+      async function pollParkingSafety() {
+        try {
+          const res = await fetch(PARKING_WORKER_BASE + "/parking/status?key=" + PARKING_KEY);
+          const data = await res.json();
+          if (typeof data.moveInMinutes === "number" && currentView !== "parking") {
+            showView("parking");
+          }
+        } catch {}
+      }
+      pollParkingSafety();
+      setInterval(pollParkingSafety, PARKING_SAFETY_POLL_MS);
+
+      // ══════════════════════════════════════════════════════════════
+      // CLOCK
+      // ══════════════════════════════════════════════════════════════
+      (function () {
+        // 4-letter abbreviations (first 4 chars of the full name, e.g.
+        // SEPTEMBER -> SEPT) - fixes header-left overflowing its 640px grid
+        // column on long month names (SEPTEMBER was the worst case, 9
+        // chars) and pushing the year/AM-PM column off the right edge.
+        const MONTHS = ['JANU','FEBR','MARC','APRI','MAY','JUNE','JULY','AUGU','SEPT','OCTO','NOVE','DECE'];
+        const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+
+        function ordinal(n) {
+          const s = ['TH', 'ST', 'ND', 'RD'];
+          const v = n % 100;
+          return n + (s[(v - 20) % 10] || s[v] || s[0]);
+        }
+
+        // Your location's own UTC offset (from Open-Meteo) rather than
+        // trusting the device's own system timezone.
+        let utcOffsetSeconds = null;
+
+        function localNow() {
+          if (utcOffsetSeconds === null) return new Date();
+          return new Date(Date.now() + utcOffsetSeconds * 1000);
+        }
+
+        let colonOn = true;
+        function renderClock() {
+          const now = localNow();
+          const get = (fn) => (utcOffsetSeconds === null ? now[fn]() : now['getUTC' + fn.slice(3)]());
+
+          document.getElementById('clock-month').textContent = MONTHS[get('getMonth')];
+          document.getElementById('clock-day').textContent = ordinal(get('getDate'));
+          document.getElementById('clock-weekday').textContent = WEEKDAYS[get('getDay')];
+          document.getElementById('clock-year').textContent = get('getFullYear');
+
+          let hours = get('getHours');
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          hours = hours % 12;
+          if (hours === 0) hours = 12;
+          const minutes = String(get('getMinutes')).padStart(2, '0');
+
+          colonOn = !colonOn;
+          const dotClass = colonOn ? 'colon-dot' : 'colon-dot dim';
+          document.getElementById('clock-time').innerHTML =
+            `<span>${hours}</span>` +
+            `<span class="colon-wrap"><span class="${dotClass}"></span><span class="${dotClass}"></span></span>` +
+            `<span>${minutes}</span>`;
+          document.getElementById('clock-ampm').textContent = ampm;
+        }
+
+        const WEATHER_URL =
+          'https://api.open-meteo.com/v1/forecast?latitude=REPLACE_WITH_YOUR_LAT&longitude=REPLACE_WITH_YOUR_LON' +
+          '&hourly=temperature_2m,weather_code&daily=sunrise,sunset&temperature_unit=fahrenheit&timezone=auto&forecast_days=2';
+
+        function localStringToUtcMs(str) {
+          return new Date(str + ':00Z').getTime() - utcOffsetSeconds * 1000;
+        }
+
+        const SUN_ICON = `
+          <svg viewBox="0 0 64 64">
+            <g class="sun-rays" stroke="#f5a623" stroke-width="4" stroke-linecap="round">
+              <line x1="32" y1="2" x2="32" y2="12" /><line x1="32" y1="52" x2="32" y2="62" />
+              <line x1="2" y1="32" x2="12" y2="32" /><line x1="52" y1="32" x2="62" y2="32" />
+              <line x1="10.7" y1="10.7" x2="18" y2="18" /><line x1="46" y1="46" x2="53.3" y2="53.3" />
+              <line x1="10.7" y1="53.3" x2="18" y2="46" /><line x1="46" y1="18" x2="53.3" y2="10.7" />
+            </g>
+            <circle class="sun-disc" cx="32" cy="32" r="14" fill="#f5a623" />
+          </svg>`;
+        const MOON_ICON = `
+          <svg viewBox="0 0 64 64">
+            <circle class="moon-star a" cx="12" cy="16" r="1.6" fill="#fff" />
+            <circle class="moon-star b" cx="50" cy="12" r="1.3" fill="#fff" />
+            <circle class="moon-body" cx="30" cy="32" r="16" fill="#e7e7f2" />
+            <circle cx="38" cy="26" r="14" fill="#000" />
+          </svg>`;
+        function iconFor(isNight) { return isNight ? MOON_ICON : SUN_ICON; }
+
+        let sunTimes = null;
+        async function fetchWeather() {
+          try {
+            const res = await fetch(WEATHER_URL);
+            const data = await res.json();
+            utcOffsetSeconds = data.utc_offset_seconds;
+
+            sunTimes = {
+              sunrise0: localStringToUtcMs(data.daily.sunrise[0]),
+              sunset0: localStringToUtcMs(data.daily.sunset[0]),
+            };
+
+            const local = localNow();
+            const pad = (n) => String(n).padStart(2, '0');
+            const hourKey =
+              `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}` +
+              `T${pad(local.getUTCHours())}:00`;
+            let idx = data.hourly.time.indexOf(hourKey);
+            if (idx === -1) idx = 0;
+            const laterIdx = Math.min(idx + 5, data.hourly.temperature_2m.length - 1);
+
+            const isNightAt = (ms) => !(ms >= sunTimes.sunrise0 && ms < sunTimes.sunset0);
+            const msAt = (i) => localStringToUtcMs(data.hourly.time[i]);
+
+            document.getElementById('clock-temp-now').textContent = `${Math.round(data.hourly.temperature_2m[idx])}°F`;
+            document.getElementById('clock-icon-now').innerHTML = iconFor(isNightAt(msAt(idx)));
+
+            document.getElementById('clock-temp-later').textContent = `${Math.round(data.hourly.temperature_2m[laterIdx])}°F`;
+            document.getElementById('clock-icon-later').innerHTML = iconFor(isNightAt(msAt(laterIdx)));
+          } catch (err) {
+            // keep showing the last known-good reading rather than blanking out
+          }
+        }
+
+        // --- Tiny MOVE badge (soft, pre-urgent signal) ---
+        const $moveBadge = document.getElementById("clock-moveBadge");
+        async function pollParkingBadge() {
+          try {
+            const res = await fetch(PARKING_WORKER_BASE + "/parking/status?key=" + PARKING_KEY);
+            const data = await res.json();
+            $moveBadge.style.display = data.status === "MOVE" ? "block" : "none";
+            // The urgent force-switch-to-Parking case is handled by the
+            // shared pollParkingSafety() above now - this poll only owns the
+            // small ambient badge.
+          } catch {}
+        }
+
+        let clockTickTimer = null, weatherTimer = null, badgeTimer = null;
+        viewShowHandlers.clock = function () {
+          renderClock();
+          clockTickTimer = setInterval(renderClock, 500);
+          fetchWeather();
+          weatherTimer = setInterval(fetchWeather, 30 * 60 * 1000);
+          pollParkingBadge();
+          badgeTimer = setInterval(pollParkingBadge, 600000);
+        };
+        viewHideHandlers.clock = function () {
+          clearInterval(clockTickTimer);
+          clearInterval(weatherTimer);
+          clearInterval(badgeTimer);
+        };
+      })();
+
+      // ══════════════════════════════════════════════════════════════
+      // LIGHT
+      // ══════════════════════════════════════════════════════════════
+      const lightApi = (function () {
+        const DEFAULT_PRESETS = [
+          [255, 0, 0], [255, 140, 0], [255, 255, 0],
+          [0, 200, 60], [0, 120, 255], [160, 0, 220], [255, 255, 255],
+        ];
+        const BRIGHTNESS_STEP = 5;
+        const BRIGHTNESS_SEND_THROTTLE_MS = 180;
+        const PRESETS_KEY = "wiz_presets_v1";
+        const WHITE_COLORTEMP = 2700;
+        function isWhiteRgb(rgb) { return rgb[0] === 255 && rgb[1] === 255 && rgb[2] === 255; }
+
+        let PRESETS = loadPresets();
+        function loadPresets() {
+          try {
+            const saved = JSON.parse(localStorage.getItem(PRESETS_KEY));
+            if (Array.isArray(saved) && saved.length === DEFAULT_PRESETS.length) return saved;
+          } catch {}
+          return DEFAULT_PRESETS.map((c) => [...c]);
+        }
+        function savePresets() { localStorage.setItem(PRESETS_KEY, JSON.stringify(PRESETS)); }
+
+        const gridEl = document.getElementById("light-grid");
+        const bulbEl = document.getElementById("light-bulb");
+        const statusTargetEl = document.getElementById("light-status-target");
+        const statusPctEl = document.getElementById("light-status-pct");
+        const brightnessEl = document.getElementById("light-brightness");
+        const colorsRowEl = document.getElementById("light-colors-row");
+        const errorEl = document.getElementById("light-error");
+        const debugEl = document.getElementById("light-debug");
+
+        const pickerEl = document.getElementById("light-picker");
+        const spectrumEl = document.getElementById("light-spectrum");
+        const rSliderEl = document.getElementById("light-rSlider");
+        const gSliderEl = document.getElementById("light-gSlider");
+        const bSliderEl = document.getElementById("light-bSlider");
+        const hexReadoutEl = document.getElementById("light-hex-readout");
+        const pickerPreviewEl = document.getElementById("light-picker-preview");
+        const pickerSwatchesEl = document.getElementById("light-picker-swatches");
+        const scanBtnEl = document.getElementById("light-scanBtn");
+
+        let lights = [];
+        let selected = "ALL";
+        let swatchEls = [];
+
+        function rgbCss([r, g, b]) { return `rgb(${r}, ${g}, ${b})`; }
+        function toHex([r, g, b]) { return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("").toUpperCase(); }
+        function pct(brightness255) { return Math.round((brightness255 / 255) * 100); }
+        function closestPresetIndex(rgb) {
+          let best = 0, bestDist = Infinity;
+          PRESETS.forEach(([r, g, b], i) => {
+            const d = (r - rgb[0]) ** 2 + (g - rgb[1]) ** 2 + (b - rgb[2]) ** 2;
+            if (d < bestDist) { bestDist = d; best = i; }
+          });
+          return best;
+        }
+
+        function currentViewOfLights() {
+          if (selected === "ALL") {
+            const rep = lights[0] || { on: false, brightness: 0, rgb: [255, 255, 255] };
+            const onCount = lights.filter((l) => l.on).length;
+            return { on: rep.on, brightness: rep.brightness, rgb: rep.rgb, label: `ALL/`, sub: `${onCount}/${lights.length}` };
+          }
+          const light = lights.find((l) => l.id === selected);
+          if (!light) return { on: false, brightness: 0, rgb: [255, 255, 255], label: selected, sub: "" };
+          return { ...light, label: `${light.id}/`, sub: light.ip };
+        }
+
+        function targetPath(action) { return selected === "ALL" ? `/all/${action}` : `/lights/${selected}/${action}`; }
+        function tileFill(light) {
+          if (!light.on) return "#333";
+          if (light.rgb[0] === null) return "#fff3d6";
+          return rgbCss(light.rgb);
+        }
+
+        function renderGrid() {
+          gridEl.innerHTML = "";
+          const onCount = lights.filter((l) => l.on).length;
+          const entries = [
+            { id: "ALL", name: "ALL", fill: lights[0] ? tileFill(lights[0]) : "#333", sub: `${onCount}/${lights.length}`, pctVal: lights[0] ? pct(lights[0].brightness) : 0 },
+            // "offline" rather than "off" for a bulb the bridge can't reach -
+            // reporting it as merely switched off hid a dead bulb (L3).
+            ...lights.map((l) => ({ id: l.id, name: l.id, fill: tileFill(l), offline: l.reachable === false,
+              sub: l.reachable === false ? "offline" : l.on ? `${pct(l.brightness)}%` : "off", pctVal: pct(l.brightness) })),
+          ];
+          for (const entry of entries) {
+            const tile = document.createElement("div");
+            tile.className = `tile ${entry.id === selected ? "selected" : ""} ${entry.offline ? "offline" : ""}`;
+            tile.innerHTML = `
+              <div class="swatch-fill" style="background:${entry.fill}"></div>
+              <div class="mini-bar-track"><div class="mini-bar-fill" style="width:${entry.pctVal}%"></div></div>
+              <div class="tile-label mono">${entry.name} · ${entry.sub}</div>
+            `;
+            tile.addEventListener("click", () => { selected = entry.id; render(); });
+            gridEl.appendChild(tile);
+          }
+        }
+
+        function renderColorsRow() {
+          colorsRowEl.innerHTML = "";
+          swatchEls = [];
+          for (const rgb of PRESETS) {
+            const el = document.createElement("div");
+            el.className = "swatch";
+            el.style.background = rgbCss(rgb);
+            el.addEventListener("click", () => applyPresetColor(rgb));
+            colorsRowEl.appendChild(el);
+            swatchEls.push(el);
+          }
+          const plus = document.createElement("div");
+          plus.className = "plus-trigger";
+          plus.innerHTML = `
+            <div class="cell"></div><div class="cell arm"></div><div class="cell"></div>
+            <div class="cell arm"></div><div class="cell arm center"></div><div class="cell arm"></div>
+            <div class="cell"></div><div class="cell arm"></div><div class="cell"></div>
+          `;
+          plus.addEventListener("click", openPicker);
+          colorsRowEl.appendChild(plus);
+        }
+
+        function render() {
+          renderGrid();
+          renderColorsRow();
+          const v = currentViewOfLights();
+          if (v.on) {
+            bulbEl.style.background = rgbCss(v.rgb[0] === null ? [255, 243, 214] : v.rgb);
+            bulbEl.style.boxShadow = `0 0 60px 10px ${rgbCss(v.rgb[0] === null ? [255, 243, 214] : v.rgb)}55`;
+          } else {
+            bulbEl.style.background = "transparent";
+            bulbEl.style.boxShadow = "none";
+          }
+          const p = pendingBrightness ?? pct(v.brightness);
+          statusTargetEl.textContent = v.label;
+          statusPctEl.textContent = `${p}%`;
+          brightnessEl.value = p;
+
+          const presetIdx = closestPresetIndex(v.rgb[0] === null ? [255, 255, 255] : v.rgb);
+          swatchEls.forEach((el, i) => el.classList.toggle("current", i === presetIdx));
+        }
+
+        async function api(path, options) {
+          errorEl.textContent = "";
+          try {
+            const merged = { ...options, headers: { ...(options && options.headers), ...BRIDGE_AUTH_HEADERS } };
+            const res = await fetch(BRIDGE + path, merged);
+            if (!res.ok) throw new Error(`bridge returned ${res.status}`);
+            return await res.json();
+          } catch (e) {
+            errorEl.textContent = `bridge unreachable: ${e.message}`;
+            throw e;
+          }
+        }
+
+        let refreshSeq = 0;
+        async function refresh() {
+          const seq = ++refreshSeq;
+          const result = await api("/lights");
+          if (seq !== refreshSeq) return;
+          lights = result;
+          if (selected !== "ALL" && !lights.find((l) => l.id === selected)) selected = "ALL";
+          render();
+        }
+
+        async function scan() {
+          try {
+            const result = await api("/scan", { method: "POST" });
+            lights = result.lights;
+            render();
+          } catch {}
+        }
+        scanBtnEl.addEventListener("click", scan);
+
+        async function toggle() {
+          try {
+            await api(targetPath("toggle"), { method: "POST" });
+            await refresh();
+          } catch {}
+        }
+
+        let brightnessSendSeq = 0;
+        async function sendBrightness(value) {
+          const seq = ++brightnessSendSeq;
+          try {
+            await api(targetPath("brightness"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ value }),
+            });
+            await refresh();
+          } catch {}
+          if (seq === brightnessSendSeq) pendingBrightness = null;
+        }
+
+        async function setColor(rgb) {
+          try {
+            const [r, g, b] = rgb;
+            await api(targetPath("color"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ r, g, b }),
+            });
+            refresh().catch(() => {});
+          } catch {}
+        }
+
+        async function setColortemp(kelvin) {
+          try {
+            await api(targetPath("colortemp"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ value: kelvin }),
+            });
+            refresh().catch(() => {});
+          } catch {}
+        }
+
+        function applyPresetColor(rgb) {
+          if (isWhiteRgb(rgb)) setColortemp(WHITE_COLORTEMP);
+          else setColor(rgb);
+        }
+
+        let pendingBrightness = null;
+        let brightnessSendTimer = null;
+        function nudgeBrightness(delta) {
+          const current = Number(brightnessEl.value);
+          const next = Math.max(0, Math.min(100, current + delta));
+          pendingBrightness = next;
+          brightnessEl.value = next;
+          if (brightnessSendTimer) return;
+          brightnessSendTimer = setTimeout(() => {
+            brightnessSendTimer = null;
+            sendBrightness(pendingBrightness);
+          }, BRIGHTNESS_SEND_THROTTLE_MS);
+        }
+
+        bulbEl.addEventListener("click", toggle);
+        brightnessEl.addEventListener("change", () => {
+          pendingBrightness = Number(brightnessEl.value);
+          sendBrightness(pendingBrightness);
+        });
+
+        let pickerColor = [255, 255, 255];
+        let pickerSendTimer = null;
+
+        function updatePickerUI() {
+          rSliderEl.value = pickerColor[0];
+          gSliderEl.value = pickerColor[1];
+          bSliderEl.value = pickerColor[2];
+          hexReadoutEl.textContent = toHex(pickerColor);
+          pickerPreviewEl.style.background = rgbCss(pickerColor);
+        }
+
+        function pickerColorChanged(sendLive) {
+          updatePickerUI();
+          if (!sendLive) return;
+          if (pickerSendTimer) return;
+          pickerSendTimer = setTimeout(() => {
+            pickerSendTimer = null;
+            setColor(pickerColor);
+          }, BRIGHTNESS_SEND_THROTTLE_MS);
+        }
+
+        function renderPickerSwatches() {
+          pickerSwatchesEl.innerHTML = "";
+          PRESETS.forEach((rgb, i) => {
+            const el = document.createElement("div");
+            el.className = "picker-swatch";
+            el.style.background = rgbCss(rgb);
+            el.addEventListener("click", () => {
+              PRESETS[i] = [...pickerColor];
+              savePresets();
+              renderPickerSwatches();
+              renderColorsRow();
+            });
+            pickerSwatchesEl.appendChild(el);
+          });
+        }
+
+        function openPicker() {
+          pickerColor = [...currentViewOfLights().rgb].map((v) => (v === null ? 255 : v));
+          updatePickerUI();
+          renderPickerSwatches();
+          pickerEl.classList.add("open");
+        }
+        function closePicker() { pickerEl.classList.remove("open"); }
+        pickerEl.addEventListener("click", (e) => { if (e.target === pickerEl) closePicker(); });
+
+        function spectrumColorAt(xFrac, yFrac) {
+          const hue = Math.max(0, Math.min(1, xFrac)) * 360;
+          const pure = hslToRgb(hue, 1, 0.5);
+          const s = Math.max(0, Math.min(1, yFrac));
+          if (s < 0.5) {
+            const f = s / 0.5;
+            return pure.map((c) => Math.round(255 * (1 - f) + c * f));
+          }
+          const f = (s - 0.5) / 0.5;
+          return pure.map((c) => Math.round(c * (1 - f)));
+        }
+        function hslToRgb(h, s, l) {
+          const c = (1 - Math.abs(2 * l - 1)) * s;
+          const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+          const m = l - c / 2;
+          let [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+            : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+          return [r, g, b].map((v) => Math.round((v + m) * 255));
+        }
+
+        function handleSpectrumPoint(e) {
+          const rect = spectrumEl.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width;
+          const y = (e.clientY - rect.top) / rect.height;
+          pickerColor = spectrumColorAt(x, y);
+          pickerColorChanged(true);
+        }
+        spectrumEl.addEventListener("pointerdown", (e) => {
+          handleSpectrumPoint(e);
+          const onMove = (ev) => handleSpectrumPoint(ev);
+          const onUp = () => {
+            spectrumEl.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+          };
+          spectrumEl.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+        });
+
+        for (const [slider, idx] of [[rSliderEl, 0], [gSliderEl, 1], [bSliderEl, 2]]) {
+          slider.addEventListener("input", () => {
+            pickerColor[idx] = Number(slider.value);
+            pickerColorChanged(true);
+          });
+        }
+
+        // Dial rotation is a real DOM "wheel" event on deltaX (horizontal),
+        // not deltaY - confirmed against real hardware capture. Reacts to
+        // each tick immediately rather than net-summing over a window (an
+        // earlier design that could silently drop a fast reversal).
+        const WHEEL_DEAD_ZONE = 10;
+        window.addEventListener("wheel", (e) => {
+          if (currentView !== "light") return;
+          debugEl.textContent = ` wheel dX=${e.deltaX.toFixed(0)} dY=${e.deltaY.toFixed(0)}`;
+          e.preventDefault();
+          if (Math.abs(e.deltaX) < WHEEL_DEAD_ZONE) return;
+          nudgeBrightness((e.deltaX > 0 ? 1 : -1) * BRIGHTNESS_STEP);
+        }, { passive: false });
+
+        let refreshTimer = null;
+        viewShowHandlers.light = function () {
+          refresh().catch(() => {});
+          refreshTimer = setInterval(() => refresh().catch(() => {}), 5000);
+        };
+        viewHideHandlers.light = function () {
+          clearInterval(refreshTimer);
+          closePicker();
+        };
+
+        return {
+          refresh,
+          toggle,
+          nudgeBrightness,
+          closePicker,
+          isPickerOpen: () => pickerEl.classList.contains("open"),
+        };
+      })();
+
+      // ══════════════════════════════════════════════════════════════
+      // KASA
+      // ══════════════════════════════════════════════════════════════
+      const kasaApi = (function () {
+        const $grid = document.getElementById("kasa-grid");
+        const $summary = document.getElementById("kasa-summary");
+        const $error = document.getElementById("kasa-error");
+
+        let plugs = [];
+        let schedules = {};
+
+        async function api(path, options) {
+          const merged = { ...options, headers: { ...AUTH_JSON, ...(options && options.headers) } };
+          const res = await fetch(KASA_BRIDGE + path, merged);
+          if (!res.ok) throw new Error(`bridge ${res.status}`);
+          return res.json();
+        }
+
+        function fmtSched(id) {
+          const s = schedules[id];
+          if (!s) return "no schedule";
+          return `${s.on_time} → ${s.off_time}`;
+        }
+
+        function render() {
+          $grid.innerHTML = "";
+          for (const p of plugs) {
+            const tile = document.createElement("div");
+            tile.className = "tile" + (p.on ? " on" : "") + (p.reachable === false ? " unreachable" : "");
+
+            const name = document.createElement("div");
+            name.className = "name";
+            const suffix = (p.alias || "").split("_").pop();
+            name.textContent = `${p.id} · ${suffix || "plug"}`;
+
+            const rssi = document.createElement("div");
+            rssi.className = "rssi mono";
+            rssi.textContent = p.rssi != null ? `${p.rssi} dBm` : "";
+
+            const state = document.createElement("div");
+            state.className = "state " + (p.on ? "is-on" : "is-off");
+            state.textContent = p.reachable === false ? "—" : (p.on ? "ON" : "OFF");
+
+            const sched = document.createElement("div");
+            sched.className = "sched mono";
+            const schedText = document.createElement("span");
+            schedText.textContent = fmtSched(p.id);
+            const edit = document.createElement("span");
+            edit.className = "edit";
+            edit.textContent = "SET ⏱";
+            edit.addEventListener("pointerdown", (e) => { e.stopPropagation(); openEditor(p.id); });
+            sched.appendChild(schedText);
+            sched.appendChild(edit);
+
+            tile.appendChild(name);
+            tile.appendChild(rssi);
+            tile.appendChild(state);
+            tile.appendChild(sched);
+            tile.addEventListener("pointerdown", () => toggle(p));
+            $grid.appendChild(tile);
+          }
+          const onCount = plugs.filter((p) => p.on).length;
+          const unreachable = plugs.filter((p) => p.reachable === false).length;
+          $summary.innerHTML = `${onCount}/${plugs.length} on` + (unreachable ? `<br>${unreachable} unreachable` : "");
+        }
+
+        async function refresh() {
+          try {
+            // kasa_bridge answers from its cache and includes each plug's
+            // schedule, so this is one fast call instead of 1 + 4 sequential.
+            plugs = await api("/plugs");
+            for (const p of plugs) schedules[p.id] = p.schedule || null;
+            $error.textContent = "";
+            render();
+          } catch (e) {
+            $error.textContent = `bridge unreachable: ${e.message}`;
+          }
+        }
+
+        async function toggle(p) {
+          if (p.reachable === false) return;
+          const target = p.on ? "off" : "on";
+          p.on = !p.on;
+          render();
+          try {
+            await api(`/plugs/${p.id}/${target}`, { method: "POST" });
+          } catch (e) {
+            p.on = !p.on;
+            render();
+            $error.textContent = `toggle failed: ${e.message}`;
+          }
+        }
+
+        const $editor = document.getElementById("kasa-editor");
+        const $edTitle = document.getElementById("kasa-edTitle");
+        const $edOn = document.getElementById("kasa-edOn");
+        const $edOff = document.getElementById("kasa-edOff");
+        const $edOnVal = document.getElementById("kasa-edOnVal");
+        const $edOffVal = document.getElementById("kasa-edOffVal");
+
+        let edPlugId = null;
+        let edOnMin = 7 * 60;
+        let edOffMin = 23 * 60;
+        let edSel = "on";
+
+        const toHHMM = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+        const parseHHMM = (s) => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
+
+        function drawEditor() {
+          $edOnVal.textContent = toHHMM(edOnMin);
+          $edOffVal.textContent = toHHMM(edOffMin);
+          $edOn.classList.toggle("sel", edSel === "on");
+          $edOff.classList.toggle("sel", edSel === "off");
+        }
+
+        function openEditor(plugId) {
+          edPlugId = plugId;
+          const s = schedules[plugId];
+          edOnMin = s ? parseHHMM(s.on_time) : 7 * 60;
+          edOffMin = s ? parseHHMM(s.off_time) : 23 * 60;
+          edSel = "on";
+          $edTitle.textContent = `${plugId} daily schedule`;
+          drawEditor();
+          $editor.classList.add("open");
+        }
+        function closeEditor() {
+          $editor.classList.remove("open");
+          edPlugId = null;
+        }
+        function isEditorOpen() { return $editor.classList.contains("open"); }
+
+        $edOn.addEventListener("pointerdown", (e) => { e.stopPropagation(); edSel = "on"; drawEditor(); });
+        $edOff.addEventListener("pointerdown", (e) => { e.stopPropagation(); edSel = "off"; drawEditor(); });
+        document.getElementById("kasa-edCancel").addEventListener("pointerdown", (e) => { e.stopPropagation(); closeEditor(); });
+        document.getElementById("kasa-edSave").addEventListener("pointerdown", async (e) => {
+          e.stopPropagation();
+          const id = edPlugId;
+          const body = { on: toHHMM(edOnMin), off: toHHMM(edOffMin) };
+          closeEditor();
+          try {
+            await api(`/plugs/${id}/schedule`, { method: "POST", body: JSON.stringify(body) });
+            schedules[id] = { on_time: body.on, off_time: body.off };
+            render();
+          } catch (err) { $error.textContent = `schedule failed: ${err.message}`; }
+        });
+        document.getElementById("kasa-edClear").addEventListener("pointerdown", async (e) => {
+          e.stopPropagation();
+          const id = edPlugId;
+          closeEditor();
+          try {
+            await api(`/plugs/${id}/schedule`, { method: "DELETE" });
+            schedules[id] = null;
+            render();
+          } catch (err) { $error.textContent = `clear failed: ${err.message}`; }
+        });
+
+        // Dial adjusts the selected time field in 15-minute steps while the
+        // editor is open - same dial-as-adjustment convention Light uses for
+        // brightness. Outside the editor the dial does nothing here.
+        const WHEEL_DEAD_ZONE = 10;
+        let wheelAccum = 0;
+        window.addEventListener("wheel", (e) => {
+          if (currentView !== "kasa" || !isEditorOpen()) return;
+          e.preventDefault();
+          wheelAccum += e.deltaX;
+          if (Math.abs(wheelAccum) < WHEEL_DEAD_ZONE) return;
+          const step = wheelAccum > 0 ? 15 : -15;
+          wheelAccum = 0;
+          if (edSel === "on") edOnMin = (edOnMin + step + 1440) % 1440;
+          else edOffMin = (edOffMin + step + 1440) % 1440;
+          drawEditor();
+        }, { passive: false });
+
+        let refreshTimer = null;
+        viewShowHandlers.kasa = function () {
+          refresh();
+          refreshTimer = setInterval(refresh, 5000);
+        };
+        viewHideHandlers.kasa = function () {
+          clearInterval(refreshTimer);
+          // Old behavior always reset the editor on navigation (a fresh
+          // page load can't have it open). Since this view now persists in
+          // the DOM instead of reloading, close it explicitly on the way
+          // out so it doesn't reappear open next time you come back.
+          closeEditor();
+        };
+
+        return { refresh, isEditorOpen, closeEditor };
+      })();
+
+      // ══════════════════════════════════════════════════════════════
+      // PARKING
+      // ══════════════════════════════════════════════════════════════
+      const parkingApi = (function () {
+        const WORKER_BASE = PARKING_WORKER_BASE;
+
+        const $empty = document.getElementById("parking-empty");
+        const $map = document.getElementById("parking-map");
+        const $header = document.getElementById("parking-header");
+        const $badge = document.getElementById("parking-badge");
+        const $badgeText = document.getElementById("parking-badgeText");
+        const $updated = document.getElementById("parking-updated");
+        const $schedule = document.getElementById("parking-schedule");
+        const $scheduleLines = document.getElementById("parking-scheduleLines");
+        const $moveModal = document.getElementById("parking-moveModal");
+        const $moveStreet = document.getElementById("parking-moveStreet");
+
+        let lastTimestamp = null;
+
+        const SNOOZE_MS = 15 * 60000;
+        let withinFlashWindow = false;
+        let snoozeUntilMs = null;
+
+        function showMoveModal() { $moveModal.style.display = "flex"; }
+        function hideMoveModal() { $moveModal.style.display = "none"; }
+        function isModalShowing() { return $moveModal.style.display === "flex"; }
+        function snoozeModal() {
+          hideMoveModal();
+          snoozeUntilMs = Date.now() + SNOOZE_MS;
+        }
+        function maybeFlash() {
+          if (!withinFlashWindow) { snoozeUntilMs = null; hideMoveModal(); return; }
+          if (snoozeUntilMs != null) {
+            if (Date.now() < snoozeUntilMs) { hideMoveModal(); return; }
+            snoozeUntilMs = null;
+          }
+          showMoveModal();
+        }
+
+        function fmtAgo(ms) {
+          const s = Math.floor((Date.now() - ms) / 1000);
+          if (s < 60) return "just now";
+          const m = Math.floor(s / 60);
+          if (m < 60) return m + "m ago";
+          const h = Math.floor(m / 60);
+          return h + "h ago";
+        }
+
+        async function poll() {
+          try {
+            const res = await fetch(WORKER_BASE + "/parking/status?key=" + PARKING_KEY);
+            const data = await res.json();
+
+            if (!data.record) {
+              $empty.style.display = "flex";
+              $map.style.display = "none";
+              $header.style.display = "none";
+              $badge.style.display = "none";
+              $schedule.style.display = "none";
+              $updated.textContent = "";
+              withinFlashWindow = false;
+              maybeFlash();
+              return;
+            }
+
+            $empty.style.display = "none";
+            $map.style.display = "block";
+            $header.style.display = "flex";
+            $badge.style.display = "block";
+
+            $badgeText.textContent = data.status;
+            $badgeText.className = "outline-title " + (data.status === "MOVE" ? "pop" : "safe");
+            $updated.textContent = "updated " + fmtAgo(data.record.timestamp);
+
+            withinFlashWindow = typeof data.moveInMinutes === "number";
+            $moveStreet.textContent = data.record.street ? data.record.street.streetName : "";
+            maybeFlash();
+
+            const windows = (data.record.rules || []).flatMap((r) => r.windows || []);
+            const uniqueWindows = [...new Set(windows)];
+            $scheduleLines.innerHTML = "";
+            if (uniqueWindows.length) {
+              uniqueWindows.forEach((w) => {
+                const line = document.createElement("div");
+                line.className = "window";
+                line.textContent = w;
+                $scheduleLines.appendChild(line);
+              });
+              $schedule.style.display = "block";
+            } else {
+              $schedule.style.display = "none";
+            }
+
+            if (data.record.timestamp !== lastTimestamp) {
+              lastTimestamp = data.record.timestamp;
+              $map.src = WORKER_BASE + "/parking/map.svg?key=" + PARKING_KEY + "&t=" + data.record.timestamp;
+            }
+          } catch (err) {
+            $updated.textContent = "fetch error";
+          }
+        }
+
+        let pollTimer = null, snoozeTicker = null;
+        viewShowHandlers.parking = function () {
+          poll(); // fresh state immediately, including when force-switched
+                  // in by the shared safety poll
+          pollTimer = setInterval(poll, 600000);
+          snoozeTicker = setInterval(maybeFlash, 20000);
+        };
+        viewHideHandlers.parking = function () {
+          clearInterval(pollTimer);
+          clearInterval(snoozeTicker);
+        };
+
+        return { isModalShowing, snoozeModal };
+      })();
+
+      // ────────────────────────────────────────────────────────────────
+      // Global dial (wheel): adjusts ALL lights from any screen except
+      // where a view claims it for its own purpose (Light's per-target
+      // brightness control, Kasa's schedule-time editor while open) - those
+      // two views install their own guarded listeners above. This one is
+      // what used to be duplicated into Clock/Parking's own files and was
+      // never added to Kasa's main screen - now it's a single listener that
+      // covers every view uniformly, including the one that was missing it.
+      // ────────────────────────────────────────────────────────────────
+      (function () {
+        const BRIGHTNESS_STEP = 5;
+        const WHEEL_DEAD_ZONE = 10;
+        const SEND_THROTTLE_MS = 180;
+
+        let intended = null;
+        let seedPromise = null;
+        let sendTimer = null;
+
+        function seed() {
+          if (!seedPromise) {
+            seedPromise = fetch(BRIDGE + "/lights", { headers: BRIDGE_AUTH_HEADERS })
+              .then((r) => r.json())
+              .then((lights) => { intended = lights.length ? Math.round((lights[0].brightness / 255) * 100) : 50; })
+              .catch(() => { intended = 50; });
+          }
+          return seedPromise;
+        }
+        seed();
+
+        function sendAll(value) {
+          fetch(BRIDGE + "/all/brightness", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...BRIDGE_AUTH_HEADERS },
+            body: JSON.stringify({ value }),
+          }).catch(() => {});
+        }
+
+        window.addEventListener("wheel", async (e) => {
+          if (currentView === "light") return; // Light's own listener owns the dial there
+          if (currentView === "kasa" && kasaApi.isEditorOpen()) return; // Kasa's editor owns it while open
+          if (Math.abs(e.deltaX) < WHEEL_DEAD_ZONE) return;
+          e.preventDefault();
+          if (intended === null) await seed();
+          intended = Math.max(0, Math.min(100, intended + (e.deltaX > 0 ? BRIGHTNESS_STEP : -BRIGHTNESS_STEP)));
+          if (sendTimer) return;
+          sendTimer = setTimeout(() => {
+            sendTimer = null;
+            sendAll(intended);
+          }, SEND_THROTTLE_MS);
+        }, { passive: false });
+      })();
+
+      // ────────────────────────────────────────────────────────────────
+      // Global buttons (1-4) + Escape + Clock's generic dismiss, and
+      // Light's own Up/Down/Enter controls while it's the active view.
+      // Physical dial-click and the 4 preset buttons come through as
+      // keydown (Enter / digits "1"-"4").
+      // ────────────────────────────────────────────────────────────────
+      window.addEventListener("keydown", (e) => {
+        if (e.repeat) return;
+
+        if (e.key === "1") {
+          if (currentView === "kasa" && kasaApi.isEditorOpen()) { kasaApi.closeEditor(); e.preventDefault(); return; }
+          if (currentView === "parking" && parkingApi.isModalShowing()) { parkingApi.snoozeModal(); e.preventDefault(); return; }
+          showView("clock"); e.preventDefault(); return;
+        }
+        if (e.key === "2") { showView("light"); e.preventDefault(); return; }
+        if (e.key === "3") { showView("kasa"); e.preventDefault(); return; }
+        if (e.key === "4") { showView("parking"); e.preventDefault(); return; }
+
+        if (e.key === "Escape") {
+          if (currentView === "kasa" && kasaApi.isEditorOpen()) { kasaApi.closeEditor(); e.preventDefault(); return; }
+          if (currentView === "light") { showView("clock"); e.preventDefault(); return; }
+        }
+
+        if (currentView === "light") {
+          const isUp = e.key === "ArrowUp" || e.code === "ArrowUp" || e.keyCode === 38;
+          const isDown = e.key === "ArrowDown" || e.code === "ArrowDown" || e.keyCode === 40;
+          const isEnter = e.key === "Enter" || e.code === "Enter" || e.keyCode === 13;
+          const LIGHT_BRIGHTNESS_STEP = 5;
+          if (isUp) { lightApi.nudgeBrightness(LIGHT_BRIGHTNESS_STEP); e.preventDefault(); return; }
+          if (isDown) { lightApi.nudgeBrightness(-LIGHT_BRIGHTNESS_STEP); e.preventDefault(); return; }
+          if (isEnter) {
+            if (lightApi.isPickerOpen()) lightApi.closePicker();
+            else lightApi.toggle();
+            e.preventDefault();
+            return;
+          }
+        }
+
+        if (currentView === "clock") dismissToLastApp();
+      }, { capture: true });
+
+      window.addEventListener("pointerdown", () => {
+        if (currentView === "clock") dismissToLastApp();
+      }, { capture: true });
+
+      // ────────────────────────────────────────────────────────────────
+      // Boot: land on Clock, same as every one of the 4 old registrations
+      // defaulted to being whichever app you were on when the device slept
+      // or rebooted onto this slot. Fires Clock's own onShow immediately.
+      // ────────────────────────────────────────────────────────────────
+      viewShowHandlers.clock();
+      // Warm Light and Kasa once at boot so the first switch to either one
+      // renders real state immediately instead of an empty grid.
+      lightApi.refresh().catch(() => {});
+      kasaApi.refresh();
+    </script>
+  </body>
+</html>
