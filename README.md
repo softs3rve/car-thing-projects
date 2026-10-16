@@ -63,8 +63,8 @@ copy to a public repo.
 ## Status
 
 A personal project, shared as-is. It runs on one setup: a Car Thing on
-bridgething, a Raspberry Pi 3 B+, WiZ bulbs, Kasa plugs, and an iPhone with
-CarPlay. Expect to adapt it to yours. Each folder's README says what was and
+bridgething, a Raspberry Pi 3 B+, WiZ bulbs, Kasa plugs, and an iPhone that
+reports where you parked when it disconnects from the car's Bluetooth. Expect to adapt it to yours. Each folder's README says what was and
 wasn't tested.
 
 ## Credits
